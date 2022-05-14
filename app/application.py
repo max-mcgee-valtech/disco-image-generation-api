@@ -1805,7 +1805,7 @@ skip_augs = False#@param{type: 'boolean'}
 #@markdown ####**Init Settings:**
 init_image = "None" #@param{type: 'string'}
 init_scale =  1000#@param{type: 'integer'}
-skip_steps =  10#@param{type: 'integer'}
+skip_steps =  125#@param{type: 'integer'}
 #@markdown *Make sure you set skip_steps to ~50% of your steps if you want to use an init image.*
 
 #Get corrected sizes
@@ -2466,6 +2466,7 @@ def handle_data():
       print('Seed used:', seed)
       gc.collect()
       torch.cuda.empty_cache()    
+    return 'Success'
 
   
   
