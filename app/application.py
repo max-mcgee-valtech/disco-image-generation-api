@@ -5,7 +5,7 @@
 from pkg_resources import resource_filename as fpath
 import sys
 sys.path.append(fpath(__name__, ""))
-
+run_count = 0
 # -*- coding: utf-8 -*-
 """V_ Copy_of_Disco_Diffusion_v5_2_[w_VR_Mode] (1).ipynb
 
@@ -964,7 +964,13 @@ def do_3d_step(img_filepath, frame_num, midas_model, midas_transform):
                                           sampling_mode=args.sampling_mode, midas_weight=args.midas_weight)
   return next_step_pil
 
+
+
 def do_run(text_prompt_from_api):
+  print('BEGIN DO_RUN', text_prompt_from_api)
+  
+  global run_count
+  run_count += 1
   text_prompts_api = {
     0: [text_prompt_from_api],    
     100: ["This set of prompts start at frame 100","This prompt has weight five:5"],
@@ -1352,11 +1358,11 @@ def do_run(text_prompt_from_api):
                         image.save(buffered, format="PNG")
                         buffered.seek(0)
                         img_byte = buffered.getvalue()
-                        img_str = "data:image/png;base64," + base64.b64encode(img_byte).decode()
-                        print(img_str)
+                        img_str = "data:image/png;base64," + base64.b64encode(img_byte).decode()                        
                         cloudinary.uploader.upload(img_str,   
                           folder = "disco-diffusion-active-tests",            
                         )
+                        print('Upload to cloudinary complete!')
 
                         if args.animation_mode == "3D":
                           # If turbo, save a blended image
@@ -1791,8 +1797,8 @@ lpips_model = lpips.LPIPS(net='vgg').to(device)
 
 #@markdown ####**Basic Settings:**
 batch_name = 'TimeToDisco' #@param{type: 'string'}
-steps =  250#@param [25,50,100,150,250,500,1000]{type: 'raw', allow-input: true}
-width_height = [1280, 768]#@param{type: 'raw'}
+steps =  6#@param [25,50,100,150,250,500,1000]{type: 'raw', allow-input: true}
+width_height = [500, 500]#@param{type: 'raw'}
 clip_guidance_scale = 5000 #@param{type: 'number'}
 tv_scale =  0#@param{type: 'number'}
 range_scale =   150#@param{type: 'number'}
@@ -1805,7 +1811,7 @@ skip_augs = False#@param{type: 'boolean'}
 #@markdown ####**Init Settings:**
 init_image = "None" #@param{type: 'string'}
 init_scale =  1000#@param{type: 'integer'}
-skip_steps =  125#@param{type: 'integer'}
+skip_steps =  0#@param{type: 'integer'}
 #@markdown *Make sure you set skip_steps to ~50% of your steps if you want to use an init image.*
 
 #Get corrected sizes
@@ -2439,35 +2445,46 @@ if model_config['use_fp16']:
 
 """# 5. Save the .py file"""
 
-from flask import render_template
-from flask import Flask
-from flask import jsonify
+from flask import Flask, render_template, request, url_for, jsonify
 from flask_cors import CORS
-from flask import request
+
 
 # def create_app():
 app = Flask(__name__)
 CORS(app)
 
 @app.route('/')
-def hello():
+def hello():    
     return 'AAAAAAA'
 
-@app.route('/handle_data', methods=['POST', 'OPTIONS'])
-def handle_data():
+@app.route('/handle_data', methods=['POST'])
+def handle_data():    
+    global run_count
     data = request.get_json()
     name = data.get('textPrompt', '')
-    print(name)
-    try:
-      do_run(name)
-    except KeyboardInterrupt:
-      pass
-    finally:
-      print('Seed used:', seed)
-      gc.collect()
-      torch.cuda.empty_cache()    
-    return 'Success'
+    print('text prompt:', name)    
+    if run_count < 2:
+      try:
+        do_run(name)
+      except KeyboardInterrupt:
+        pass
+      finally:
+        print('Seed used:', seed)
+        gc.collect()
+        torch.cuda.empty_cache()
+        run_count -= 1    
+        return 'Success'
+    else:
+      print('Skipped run because run_count is', run_count)
+      return 'Skipped'
 
+@app.route('/test_route', methods=['POST'])
+def test_route():
+    input_json = request.get_json(force=True)
+    print('data from client:', input_json)
+    dictToReturn = {'answer':42}
+    return jsonify(dictToReturn)    
+    
   
   
   # return app
