@@ -1,11 +1,15 @@
-
-
-
 # Allow modules and files to be loaded with relative paths
 from pkg_resources import resource_filename as fpath
-import sys
+import sys, subprocess
+import os
 sys.path.append(fpath(__name__, ""))
+sys.path.append(fpath(__name__, "/home/ubuntu/.local/lib/python3.7/site-packages"))
 run_count = 0
+sys.path.append(os.path.join(os.path.dirname(__file__), "/home/ubuntu/.local/lib/python3.7/site-packages"))
+
+print('PYTHON PATHS:', sys.path)
+
+
 # -*- coding: utf-8 -*-
 """V_ Copy_of_Disco_Diffusion_v5_2_[w_VR_Mode] (1).ipynb
 
@@ -307,7 +311,7 @@ else:
 
 
 #@title 1.2 Prepare Folders
-import subprocess, os, sys, ipykernel
+import subprocess, os, sys
 
 def gitclone(url):
   res = subprocess.run(['git', 'clone', url], stdout=subprocess.PIPE).stdout.decode('utf-8')
@@ -394,7 +398,7 @@ model_256_downloaded = False
 model_512_downloaded = False
 model_secondary_downloaded = False
 
-multipip_res = subprocess.run(['pip', 'install', 'lpips', 'datetime', 'timm', 'ftfy', 'einops', 'pytorch-lightning', 'omegaconf'], stdout=subprocess.PIPE).stdout.decode('utf-8')
+multipip_res = subprocess.run(['pip', 'install', 'lpips', 'datetime', 'timm', 'ftfy', 'einops', 'pytorch-lightning', 'omegaconf', 'torchvision'], stdout=subprocess.PIPE).stdout.decode('utf-8')
 print(multipip_res)
 
 if is_colab:
@@ -461,10 +465,13 @@ except:
     shutil.move('disco-diffusion/disco_xform_utils.py', 'disco_xform_utils.py')
   sys.path.append(PROJECT_DIR)
 
+
+
 import torch
+# implement pip as a subprocess:
 from dataclasses import dataclass
 from functools import partial
-import cv2
+# import cv2
 import pandas as pd
 import gc
 import io
@@ -966,9 +973,9 @@ def do_3d_step(img_filepath, frame_num, midas_model, midas_transform):
 
 
 
-def do_run(text_prompt_from_api):
-  print('BEGIN DO_RUN', text_prompt_from_api)
-  
+def do_run(text_prompt_from_api, imageId):
+  print('Started run for prompt:', text_prompt_from_api)
+  print('Image ID for this Image:', imageId)    
   global run_count
   run_count += 1
   text_prompts_api = {
@@ -1360,7 +1367,9 @@ def do_run(text_prompt_from_api):
                         img_byte = buffered.getvalue()
                         img_str = "data:image/png;base64," + base64.b64encode(img_byte).decode()                        
                         cloudinary.uploader.upload(img_str,   
-                          folder = "disco-diffusion-active-tests",            
+                          folder = "disco-diffusion-active-tests",
+                          public_id = imageId,
+                          context = f'alt=complete|caption={text_prompt_from_api}'
                         )
                         print('Upload to cloudinary complete!')
 
@@ -1797,8 +1806,8 @@ lpips_model = lpips.LPIPS(net='vgg').to(device)
 
 #@markdown ####**Basic Settings:**
 batch_name = 'TimeToDisco' #@param{type: 'string'}
-steps =  6#@param [25,50,100,150,250,500,1000]{type: 'raw', allow-input: true}
-width_height = [500, 500]#@param{type: 'raw'}
+steps =  250#@param [25,50,100,150,250,500,1000]{type: 'raw', allow-input: true}
+width_height = [1280, 768]#@param{type: 'raw'}
 clip_guidance_scale = 5000 #@param{type: 'number'}
 tv_scale =  0#@param{type: 'number'}
 range_scale =   150#@param{type: 'number'}
@@ -1811,7 +1820,7 @@ skip_augs = False#@param{type: 'boolean'}
 #@markdown ####**Init Settings:**
 init_image = "None" #@param{type: 'string'}
 init_scale =  1000#@param{type: 'integer'}
-skip_steps =  0#@param{type: 'integer'}
+skip_steps =  10#@param{type: 'integer'}
 #@markdown *Make sure you set skip_steps to ~50% of your steps if you want to use an init image.*
 
 #Get corrected sizes
@@ -2434,80 +2443,63 @@ for name, param in model.named_parameters():
 if model_config['use_fp16']:
     model.convert_to_fp16()
 
-# try:
-#   do_run('woman running through the fields in england')
-# except KeyboardInterrupt:
-#   pass
-# finally:
-#   print('Seed used:', seed)
-#   gc.collect()
-#   torch.cuda.empty_cache()
+
+
+
+def start_run(sentence, imageId):
+  try:
+      do_run(sentence, imageId)
+  except KeyboardInterrupt:
+    pass
+  finally:
+    print('Seed used:', seed)
+    gc.collect()
+    torch.cuda.empty_cache()
 
 """# 5. Save the .py file"""
 
 from flask import Flask, render_template, request, url_for, jsonify
 from flask_cors import CORS
+from rq import Queue
+from rq.job import Job
+from worker import conn
+import rq_dashboard
 
 
 # def create_app():
 app = Flask(__name__)
 CORS(app)
+q = Queue(connection=conn)
+
+
+app.config.from_object(rq_dashboard.default_settings)
+app.register_blueprint(rq_dashboard.blueprint, url_prefix="/rq")
+
+from models import *
 
 @app.route('/')
 def hello():    
-    return 'AAAAAAA'
+    return 'Hello to the world! - Max'
 
 @app.route('/handle_data', methods=['POST'])
-def handle_data():    
-    global run_count
-    data = request.get_json()
-    name = data.get('textPrompt', '')
-    print('text prompt:', name)    
-    if run_count < 2:
-      try:
-        do_run(name)
-      except KeyboardInterrupt:
-        pass
-      finally:
-        print('Seed used:', seed)
-        gc.collect()
-        torch.cuda.empty_cache()
-        run_count -= 1    
-        return 'Success'
-    else:
-      print('Skipped run because run_count is', run_count)
-      return 'Skipped'
-
-@app.route('/test_route', methods=['POST'])
-def test_route():
+def handle_data():
     input_json = request.get_json(force=True)
     print('data from client:', input_json)
-    dictToReturn = {'answer':42}
-    return jsonify(dictToReturn)    
+    textPrompt = input_json.get('textPrompt', '')    
+    imageId = input_json.get('imageId', '')    
     
-  
-  
-  # return app
+    job = q.enqueue_call(
+        func=start_run, args=(textPrompt, imageId), result_ttl=5000, timeout=3600
+    )
+    print(job.get_id())
+    return 'Started Job from Flask Route'    
 
+@app.route("/results/<job_key>", methods=['GET'])
+def get_results(job_key):
 
-# if __name__ == '__main__':
-#     port = int(os.environ.get("PORT", 5000))
-#     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-    
+    job = Job.fetch(job_key, connection=conn)
 
-# if __name__ == '__main__':    
-#     print(app)
-
-
-
-# if __name__ == "__main__":
-#   createApp()
-#     # do_run()
-#     app.run(ssl_context=('cert.pem', 'key.pem'))
-
-# from waitress import serve
-
-
-# if __name__ == "__main__":
-#     #app.run('0.0.0.0',port=server_port)
-#     serve(app, threads=4)
+    if job.is_finished:
+        return str(job.result), 200
+    else:
+        return "Nay!", 202
